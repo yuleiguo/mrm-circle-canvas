@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MRM Circle Canvas</title>
+<style>
+  :root { color-scheme: light; --ink:#282a27; --muted:#696c65; --line:#d8d8d0; --paper:#fbfaf7; --green:#6d8877; --clay:#b28d72; --blue:#8294a8; --lav:#a59bb7; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:transparent; color:var(--ink); font-family:Arial,Helvetica,sans-serif; }
+  .app { width:100%; max-width:1100px; margin:0 auto; padding:16px; border:1px solid var(--line); border-radius:16px; background:#fff; }
+  h1 { font-size:clamp(21px,3vw,29px); font-weight:500; letter-spacing:-.035em; margin:0 0 7px; }
+  .intro { color:var(--muted); font-size:14px; line-height:1.55; max-width:760px; margin:0 0 18px; }
+  .topbar { display:flex; flex-wrap:wrap; align-items:end; gap:12px; margin-bottom:12px; }
+  .field { display:flex; flex-direction:column; gap:6px; min-width:180px; flex:1; }
+  label { font-size:12px; color:var(--muted); letter-spacing:.04em; }
+  select,input[type=text] { font:inherit; font-size:14px; color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:10px 11px; background:#fff; width:100%; }
+  .workspace { display:grid; grid-template-columns:minmax(0,1fr) 225px; gap:14px; align-items:start; }
+  .canvas-wrap { position:relative; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--paper); min-width:0; }
+  svg { width:100%; height:auto; display:block; touch-action:none; user-select:none; }
+  .canvas-hint { padding:9px 12px; font-size:12px; color:var(--muted); border-top:1px solid var(--line); line-height:1.45; }
+  .panel { border:1px solid var(--line); border-radius:12px; padding:13px; display:flex; flex-direction:column; gap:12px; }
+  .panel h2 { font-size:14px; font-weight:600; margin:0; }
+  .control { display:flex; flex-direction:column; gap:7px; }
+  .button-row { display:flex; flex-wrap:wrap; gap:7px; }
+  button { appearance:none; border:1px solid #cfcfc7; background:#fff; color:var(--ink); padding:9px 11px; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer; }
+  button:hover { background:#f4f3ef; }
+  button.primary { background:#343a34; color:#fff; border-color:#343a34; }
+  button.primary:hover { background:#4b544b; }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  input[type=range] { width:100%; accent-color:var(--green); }
+  .color-row { display:flex; gap:7px; flex-wrap:wrap; }
+  .swatch { width:28px; height:28px; border-radius:50%; padding:0; border:2px solid #fff; outline:1px solid var(--line); }
+  .swatch[aria-pressed=true] { outline:2px solid var(--ink); }
+  .status { min-height:18px; font-size:12px; color:var(--muted); line-height:1.4; }
+  .footer-actions { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; margin-top:12px; }
+  .note { font-size:11px; color:var(--muted); line-height:1.5; margin:12px 0 0; }
+  .circle { cursor:grab; }
+  .circle:active { cursor:grabbing; }
+  .circle.selected { stroke:#282a27 !important; stroke-width:2.5 !important; }
+  .circle-label { pointer-events:none; font-size:14px; fill:#2f332e; text-anchor:middle; dominant-baseline:middle; }
+  .selection-ring { fill:none; stroke:#282a27; stroke-width:1.5; stroke-dasharray:4 4; pointer-events:none; }
+  @media (max-width:720px) { .app{padding:11px;border-radius:12px}.workspace{grid-template-columns:1fr}.panel{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.panel h2,.status{grid-column:1/-1}.field{min-width:140px}.footer-actions button{flex:1} }
+  @media (max-width:420px) { .panel{grid-template-columns:1fr}.topbar{gap:9px}.field{min-width:100%}.app{padding:9px} }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Make your relationship map</h1>
+  <p class="intro">Arrange the circles in a way that expresses your experience. You can move them, change their size, add labels, and let them overlap. There is no correct arrangement: the meaning belongs to you.</p>
+  <div class="topbar">
+    <div class="field">
+      <label for="prompt">CHOOSE A STARTING PROMPT</label>
+      <select id="prompt">
+        <option value="panda">Me and a giant panda</option>
+        <option value="companion">Me and a companion animal</option>
+        <option value="nature">Me and nature</option>
+        <option value="open">My own multispecies map</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="mapTitle">OPTIONAL MAP TITLE</label>
+      <input id="mapTitle" type="text" maxlength="80" placeholder="e.g. A day at the panda base">
+    </div>
+  </div>
+  <div class="workspace">
+    <div class="canvas-wrap">
+      <svg id="canvas" viewBox="0 0 720 470" role="img" aria-label="Interactive circle canvas. Drag circles to move them; select a circle to edit it.">
+        <rect x="0" y="0" width="720" height="470" fill="#fbfaf7" />
+        <g id="circles"></g>
+      </svg>
+      <div class="canvas-hint">Select a circle to edit its label or size. Drag it to change its position. Circles may overlap.</div>
+    </div>
+    <aside class="panel" aria-label="Circle controls">
+      <h2>Circle controls</h2>
+      <div class="control">
+        <label for="circleLabel">SELECTED CIRCLE LABEL</label>
+        <input id="circleLabel" type="text" maxlength="40" placeholder="Select a circle first" disabled>
+      </div>
+      <div class="control">
+        <label for="circleSize">CIRCLE SIZE</label>
+        <input id="circleSize" type="range" min="22" max="150" value="70" disabled>
+      </div>
+      <div class="control">
+        <label>COLOUR</label>
+        <div class="color-row" id="colors">
+          <button class="swatch" style="background:#dce7dc" data-color="#dce7dc" aria-label="Sage green" aria-pressed="true"></button>
+          <button class="swatch" style="background:#eadccf" data-color="#eadccf" aria-label="Warm clay" aria-pressed="false"></button>
+          <button class="swatch" style="background:#d9e0e9" data-color="#d9e0e9" aria-label="Slate blue" aria-pressed="false"></button>
+          <button class="swatch" style="background:#e7e0ef" data-color="#e7e0ef" aria-label="Soft lavender" aria-pressed="false"></button>
+        </div>
+      </div>
+      <div class="button-row">
+        <button id="addCircle">+ Add circle</button>
+        <button id="deleteCircle" disabled>Delete</button>
+      </div>
+      <div class="button-row">
+        <button id="undo" disabled>Undo</button>
+        <button id="reset">Start over</button>
+      </div>
+      <div class="status" id="status" aria-live="polite">Select a circle to begin.</div>
+    </aside>
+  </div>
+  <div class="footer-actions">
+    <button id="download" class="primary">Download map (PNG)</button>
+    <button id="downloadData">Export editable data (JSON)</button>
+  </div>
+  <p class="note">This prototype runs in your browser. It does not submit or upload your drawing. Download your map to keep a copy. If you use this activity for formal research, provide the appropriate study information and consent process before collecting submissions.</p>
+</div>
+<script>
+(() => {
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const canvas = document.getElementById('canvas');
+  const circlesLayer = document.getElementById('circles');
+  const promptEl = document.getElementById('prompt');
+  const titleEl = document.getElementById('mapTitle');
+  const labelEl = document.getElementById('circleLabel');
+  const sizeEl = document.getElementById('circleSize');
+  const statusEl = document.getElementById('status');
+  const undoBtn = document.getElementById('undo');
+  const deleteBtn = document.getElementById('deleteCircle');
+  const palette = ['#dce7dc','#eadccf','#d9e0e9','#e7e0ef'];
+  let nextId = 4;
+  let selectedId = 1;
+  let drag = null;
+  let history = [];
+  let circles = [];
+
+  const presets = {
+    panda: [
+      {id:1,x:220,y:235,r:78,label:'Me',color:'#dce7dc'},
+      {id:2,x:390,y:205,r:58,label:'Giant panda',color:'#eadccf'},
+      {id:3,x:475,y:320,r:42,label:'Place / nature',color:'#d9e0e9'}
+    ],
+    companion: [
+      {id:1,x:245,y:235,r:72,label:'Me',color:'#dce7dc'},
+      {id:2,x:390,y:235,r:72,label:'My animal',color:'#eadccf'},
+      {id:3,x:485,y:330,r:40,label:'Home / place',color:'#d9e0e9'}
+    ],
+    nature: [
+      {id:1,x:260,y:250,r:70,label:'Me',color:'#dce7dc'},
+      {id:2,x:395,y:220,r:95,label:'Nature',color:'#eadccf'},
+      {id:3,x:490,y:325,r:40,label:'Other beings',color:'#d9e0e9'}
+    ],
+    open: [
+      {id:1,x:260,y:235,r:66,label:'Me',color:'#dce7dc'},
+      {id:2,x:405,y:200,r:58,label:'Being / species',color:'#eadccf'},
+      {id:3,x:465,y:325,r:45,label:'Place',color:'#d9e0e9'}
+    ]
+  };
+
+  function clone(v) { return JSON.parse(JSON.stringify(v)); }
+  function snapshot() {
+    history.push(JSON.stringify({circles,selectedId,nextId,prompt:promptEl.value,title:titleEl.value}));
+    if (history.length > 60) history.shift();
+    updateUndo();
+  }
+  function updateUndo() { undoBtn.disabled = history.length === 0; }
+  function announce(message) { statusEl.textContent = message; }
+  function selected() { return circles.find(c => c.id === selectedId); }
+  function makeSvg(tag, attrs={}) {
+    const el = document.createElementNS(svgNS, tag);
+    Object.entries(attrs).forEach(([k,v]) => el.setAttribute(k, v));
+    return el;
+  }
+  function render() {
+    circlesLayer.replaceChildren();
+    circles.forEach(c => {
+      const g = makeSvg('g', { 'data-id':c.id });
+      const circle = makeSvg('circle', {cx:c.x,cy:c.y,r:c.r,fill:c.color,'fill-opacity':'0.78',stroke:c.id===selectedId?'#282a27':'#788579','stroke-width':c.id===selectedId?'2.5':'1.5',class:'circle',tabindex:'0','aria-label':c.label+' circle; select to edit'});
+      circle.addEventListener('pointerdown', startDrag);
+      circle.addEventListener('click', (e) => { e.stopPropagation(); selectCircle(c.id); });
+      circle.addEventListener('keydown', e => { if(e.key==='Enter'||e.key===' '){e.preventDefault();selectCircle(c.id);} });
+      g.appendChild(circle);
+      if (c.id === selectedId) g.appendChild(makeSvg('circle',{cx:c.x,cy:c.y,r:c.r+5,class:'selection-ring'}));
+      const text = makeSvg('text',{x:c.x,y:c.y,class:'circle-label'});
+      const words = (c.label || ' ').split(/\s+/);
+      const lines = [];
+      let line = '';
+      words.forEach(word => { const candidate = line ? line+' '+word : word; if(candidate.length>15 && line){lines.push(line);line=word;} else line=candidate; });
+      if(line) lines.push(line);
+      const visibleLines = lines.slice(0,3);
+      const startY = c.y - ((visibleLines.length-1)*8);
+      visibleLines.forEach((txt,i) => { const t=makeSvg('tspan',{x:c.x, y:startY+i*16}); t.textContent=txt; text.appendChild(t); });
+      g.appendChild(text);
+      circlesLayer.appendChild(g);
+    });
+    const c = selected();
+    labelEl.disabled = !c; sizeEl.disabled = !c; deleteBtn.disabled = !c || circles.length<=1;
+    if(c){ labelEl.value=c.label; sizeEl.value=c.r; document.querySelectorAll('.swatch').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.color===c.color))); }
+  }
+  function selectCircle(id) {
+    selectedId=id; render();
+    const c=selected(); announce(c ? `Selected “${c.label}”. Drag it to move, or edit its label and size.` : 'Select a circle to begin.');
+  }
+  function pointFromEvent(e) {
+    const p=canvas.createSVGPoint(); p.x=e.clientX; p.y=e.clientY;
+    const matrix=canvas.getScreenCTM();
+    if(!matrix) return {x:0,y:0};
+    const q=p.matrixTransform(matrix.inverse()); return {x:q.x,y:q.y};
+  }
+  function startDrag(e) {
+    e.preventDefault(); e.stopPropagation();
+    const id=Number(e.currentTarget.parentNode.getAttribute('data-id'));
+    if(id!==selectedId){selectCircle(id);} 
+    snapshot();
+    const p=pointFromEvent(e), c=circles.find(x=>x.id===id);
+    drag={id,dx:p.x-c.x,dy:p.y-c.y,pointerId:e.pointerId};
+    try { canvas.setPointerCapture(e.pointerId); } catch(_) {}
+  }
+  canvas.addEventListener('pointermove', e => {
+    if(!drag || drag.pointerId!==e.pointerId) return;
+    const p=pointFromEvent(e), c=circles.find(x=>x.id===drag.id); if(!c) return;
+    c.x=Math.max(c.r,Math.min(720-c.r,p.x-drag.dx));
+    c.y=Math.max(c.r,Math.min(470-c.r,p.y-drag.dy));
+    render();
+  });
+  function stopDrag(e) { if(drag && (!e || drag.pointerId===e.pointerId)){drag=null;} }
+  canvas.addEventListener('pointerup',stopDrag); canvas.addEventListener('pointercancel',stopDrag);
+  canvas.addEventListener('click', e => { if(e.target===canvas || e.target.tagName==='rect'){ selectedId=null; render(); announce('No circle selected. Select a circle or add a new one.'); } });
+
+  labelEl.addEventListener('input', () => { const c=selected(); if(!c)return; c.label=labelEl.value; render(); labelEl.focus(); labelEl.setSelectionRange(labelEl.value.length,labelEl.value.length); });
+  labelEl.addEventListener('change', () => { if(selected()) announce('Circle label updated.'); });
+  sizeEl.addEventListener('pointerdown', () => snapshot());
+  sizeEl.addEventListener('change', () => { const c=selected(); if(c){c.r=Number(sizeEl.value);c.x=Math.max(c.r,Math.min(720-c.r,c.x));c.y=Math.max(c.r,Math.min(470-c.r,c.y));render();announce('Circle size updated.');} });
+  document.getElementById('colors').addEventListener('click', e => {
+    const b=e.target.closest('button[data-color]'); if(!b || !selected())return;
+    snapshot(); selected().color=b.dataset.color; render(); announce('Circle colour updated.');
+  });
+  document.getElementById('addCircle').addEventListener('click', () => {
+    snapshot(); const id=nextId++; const paletteColor=palette[(id-1)%palette.length];
+    circles.push({id,x:345+(id%3)*24,y:220+(id%2)*35,r:48,label:'New circle',color:paletteColor});
+    selectedId=id; render(); labelEl.focus(); labelEl.select(); announce('Circle added. Edit its label and move it into position.');
+  });
+  deleteBtn.addEventListener('click', () => {
+    if(!selected() || circles.length<=1)return; snapshot();
+    circles=circles.filter(c=>c.id!==selectedId); selectedId=circles[0]?.id ?? null; render(); announce('Circle deleted.');
+  });
+  undoBtn.addEventListener('click', () => {
+    if(!history.length)return; const state=JSON.parse(history.pop()); circles=state.circles;selectedId=state.selectedId;nextId=state.nextId;promptEl.value=state.prompt;titleEl.value=state.title;render();updateUndo();announce('Last action undone.');
+  });
+  function resetMap() { snapshot(); circles=clone(presets[promptEl.value]);nextId=Math.max(...circles.map(c=>c.id))+1;selectedId=circles[0].id;render();announce('Map reset to the starting arrangement.'); }
+  document.getElementById('reset').addEventListener('click', () => { if(confirm('Start over with the starting arrangement? Your current arrangement will be replaced.')) resetMap(); });
+  promptEl.addEventListener('change', () => { resetMap(); });
+  function mapSvgString() {
+    const title=(titleEl.value||'My relationship map').trim();
+    const svg=makeSvg('svg',{xmlns:svgNS,viewBox:'0 0 720 470',width:'1440',height:'940'});
+    svg.appendChild(makeSvg('rect',{x:0,y:0,width:720,height:470,fill:'#fbfaf7'}));
+    const heading=makeSvg('text',{x:24,y:32,fill:'#696c65','font-size':13,'font-family':'Arial, sans-serif'});heading.textContent=title;svg.appendChild(heading);
+    circles.forEach(c=>{
+      svg.appendChild(makeSvg('circle',{cx:c.x,cy:c.y,r:c.r,fill:c.color,'fill-opacity':'.78',stroke:'#788579','stroke-width':1.5}));
+      const t=makeSvg('text',{x:c.x,y:c.y,fill:'#2f332e','font-size':14,'font-family':'Arial, sans-serif','text-anchor':'middle','dominant-baseline':'middle'});
+      const tx=makeSvg('tspan',{x:c.x,y:c.y});tx.textContent=c.label;t.appendChild(tx);svg.appendChild(t);
+    });
+    return new XMLSerializer().serializeToString(svg);
+  }
+  function saveBlob(blob, filename) { const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500); }
+  document.getElementById('download').addEventListener('click', () => {
+    const svgText=mapSvgString();const blob=new Blob([svgText],{type:'image/svg+xml;charset=utf-8'});const url=URL.createObjectURL(blob);const img=new Image();
+    img.onload=()=>{const c=document.createElement('canvas');c.width=1440;c.height=940;const ctx=c.getContext('2d');ctx.fillStyle='#fbfaf7';ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,0,0);URL.revokeObjectURL(url);c.toBlob(png=>{if(png)saveBlob(png,'mrm-relationship-map.png');else announce('Could not create PNG. Try exporting editable data.');},'image/png');};
+    img.onerror=()=>{URL.revokeObjectURL(url);announce('Could not create PNG in this browser. Try exporting editable data.');};img.src=url;
+  });
+  document.getElementById('downloadData').addEventListener('click', () => {
+    const data={method:'MRM circle canvas prototype',prompt:promptEl.value,mapTitle:titleEl.value,createdLocally:new Date().toISOString(),circles:circles.map(({id,x,y,r,label,color})=>({id,x,y,r,label,color}))};
+    saveBlob(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),'mrm-relationship-map.json');announce('Editable map data downloaded. It has not been submitted.');
+  });
+  titleEl.addEventListener('change',()=>announce('Map title updated.'));
+  circles=clone(presets.panda);render();updateUndo();
+})();
+</script>
+</body>
+</html>
